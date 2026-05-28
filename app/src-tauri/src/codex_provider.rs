@@ -8,11 +8,15 @@ pub struct CodexHookPayload {
     #[serde(default)]
     pub event: String,
     #[serde(default)]
+    pub hook_event_name: String,
+    #[serde(default)]
     pub session_id: String,
     #[serde(default)]
     pub prompt: String,
     #[serde(default)]
     pub message: String,
+    #[serde(default)]
+    pub last_assistant_message: Option<String>,
     #[serde(default)]
     pub error: String,
 }
@@ -24,20 +28,32 @@ pub fn normalize_payload(payload: CodexHookPayload) -> Option<NormalizedEvent> {
     }
 
     let session_id = session_id.to_string();
+    let event_name = if payload.hook_event_name.trim().is_empty() {
+        payload.event.clone()
+    } else {
+        payload.hook_event_name.clone()
+    };
 
-    match payload.event.as_str() {
+    match event_name.as_str() {
         "UserPromptSubmit" => Some(NormalizedEvent::UserPromptSubmit {
             session_id,
             prompt: payload.prompt,
         }),
         "PermissionRequest" => Some(NormalizedEvent::PermissionRequested { session_id }),
-        "Stop" if needs_confirmation(&payload.message) => {
+        "Stop"
+            if needs_confirmation(
+                payload
+                    .last_assistant_message
+                    .as_deref()
+                    .unwrap_or(&payload.message),
+            ) =>
+        {
             Some(NormalizedEvent::ConfirmationRequested { session_id })
         }
         "Stop" => Some(NormalizedEvent::Completed { session_id }),
         "Error" | "ToolFailure" | "ConnectionLost" => {
             let reason = if payload.error.trim().is_empty() {
-                payload.event
+                event_name
             } else {
                 payload.error
             };
@@ -77,9 +93,59 @@ mod tests {
     }
 
     #[test]
+    fn deserializes_user_prompt_submit_schema_payload() {
+        let payload: CodexHookPayload = serde_json::from_str(
+            r#"{
+                "cwd": "/tmp/project",
+                "hook_event_name": "UserPromptSubmit",
+                "model": "gpt-5",
+                "permission_mode": "default",
+                "prompt": "帮我修复真实 payload",
+                "session_id": "s1",
+                "transcript_path": null,
+                "turn_id": "t1"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalize_payload(payload),
+            Some(NormalizedEvent::UserPromptSubmit {
+                session_id: "s1".into(),
+                prompt: "帮我修复真实 payload".into(),
+            })
+        );
+    }
+
+    #[test]
     fn maps_permission_request() {
         assert_eq!(
             normalize_payload(payload("PermissionRequest", "s1")),
+            Some(NormalizedEvent::PermissionRequested {
+                session_id: "s1".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn deserializes_permission_request_schema_payload() {
+        let payload: CodexHookPayload = serde_json::from_str(
+            r#"{
+                "cwd": "/tmp/project",
+                "hook_event_name": "PermissionRequest",
+                "model": "gpt-5",
+                "permission_mode": "default",
+                "session_id": "s1",
+                "tool_input": {"cmd": "npm test"},
+                "tool_name": "exec_command",
+                "transcript_path": null,
+                "turn_id": "t1"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalize_payload(payload),
             Some(NormalizedEvent::PermissionRequested {
                 session_id: "s1".into(),
             })
@@ -96,6 +162,56 @@ mod tests {
         assert_eq!(
             normalized,
             Some(NormalizedEvent::ConfirmationRequested {
+                session_id: "s1".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn deserializes_stop_schema_payload_with_last_assistant_message() {
+        let payload: CodexHookPayload = serde_json::from_str(
+            r#"{
+                "cwd": "/tmp/project",
+                "hook_event_name": "Stop",
+                "last_assistant_message": "是否继续执行下一步？",
+                "model": "gpt-5",
+                "permission_mode": "default",
+                "session_id": "s1",
+                "stop_hook_active": false,
+                "transcript_path": null,
+                "turn_id": "t1"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalize_payload(payload),
+            Some(NormalizedEvent::ConfirmationRequested {
+                session_id: "s1".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn deserializes_stop_schema_payload_with_null_last_assistant_message() {
+        let payload: CodexHookPayload = serde_json::from_str(
+            r#"{
+                "cwd": "/tmp/project",
+                "hook_event_name": "Stop",
+                "last_assistant_message": null,
+                "model": "gpt-5",
+                "permission_mode": "default",
+                "session_id": "s1",
+                "stop_hook_active": false,
+                "transcript_path": null,
+                "turn_id": "t1"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalize_payload(payload),
+            Some(NormalizedEvent::Completed {
                 session_id: "s1".into(),
             })
         );

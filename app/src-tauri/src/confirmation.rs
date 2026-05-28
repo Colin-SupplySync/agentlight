@@ -28,8 +28,12 @@ mod tests {
 
     #[test]
     fn detects_english_confirmation_phrases() {
-        assert!(needs_confirmation("Please confirm/proceed before I continue."));
-        assert!(needs_confirmation("Waiting for you to approve this change."));
+        assert!(needs_confirmation(
+            "Please confirm/proceed before I continue."
+        ));
+        assert!(needs_confirmation(
+            "Waiting for you to approve this change."
+        ));
     }
 
     #[test]
