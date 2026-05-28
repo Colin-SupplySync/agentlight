@@ -61,6 +61,8 @@ button {
   left: 12px;
   z-index: 3;
   width: min(286px, calc(100vw - 24px));
+  max-height: calc(100vh - 72px);
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -178,8 +180,14 @@ button {
 }
 
 @media (max-width: 720px) {
+  .settings-panel {
+    max-height: 132px;
+  }
+
   .app-shell--settings-open .task-overlay {
-    top: 160px;
+    top: 196px;
+    right: 12px;
+    width: min(360px, calc(100vw - 24px));
   }
 }
 
