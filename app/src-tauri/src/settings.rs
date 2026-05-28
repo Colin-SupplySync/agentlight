@@ -12,6 +12,8 @@ pub enum OverlayPosition {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AppSettings {
     pub bark_endpoint_url: String,
+    #[serde(default)]
+    pub codex_hooks_installed: bool,
     pub notifications_enabled: bool,
     pub overlay_position: OverlayPosition,
     pub start_at_login: bool,
@@ -21,6 +23,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             bark_endpoint_url: String::new(),
+            codex_hooks_installed: false,
             notifications_enabled: false,
             overlay_position: OverlayPosition::TopRight,
             start_at_login: false,
@@ -64,6 +67,7 @@ mod tests {
         let settings_path = dir.path().join("nested").join("settings.json");
         let settings = AppSettings {
             bark_endpoint_url: "https://api.day.app/example".into(),
+            codex_hooks_installed: true,
             notifications_enabled: true,
             overlay_position: OverlayPosition::TopLeft,
             start_at_login: true,
@@ -72,5 +76,28 @@ mod tests {
         save_settings(&settings_path, &settings).unwrap();
 
         assert_eq!(load_settings(&settings_path), settings);
+    }
+
+    #[test]
+    fn missing_codex_hooks_installed_loads_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({
+                "bark_endpoint_url": "https://api.day.app/example",
+                "notifications_enabled": true,
+                "overlay_position": "top_left",
+                "start_at_login": true
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let settings = load_settings(&settings_path);
+
+        assert!(!settings.codex_hooks_installed);
+        assert!(settings.notifications_enabled);
+        assert_eq!(settings.overlay_position, OverlayPosition::TopLeft);
     }
 }

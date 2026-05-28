@@ -1,9 +1,23 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
 const HOOK_NAMES: [&str; 3] = ["UserPromptSubmit", "PermissionRequest", "Stop"];
 const STATUS_HOOK_MARKER: &str = "codex-status-hook.js";
+
+pub fn install_user_hooks(hook_script_path: &Path) -> Result<(), String> {
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| "could not resolve home directory".to_string())?;
+    install_hooks_for_home(&home_dir, hook_script_path)
+}
+
+pub fn install_hooks_for_home(home_dir: &Path, hook_script_path: &Path) -> Result<(), String> {
+    install_hooks(&codex_hooks_path(home_dir), hook_script_path)
+}
+
+pub fn codex_hooks_path(home_dir: &Path) -> PathBuf {
+    home_dir.join(".codex").join("hooks.json")
+}
 
 pub fn install_hooks(hooks_path: &Path, hook_script_path: &Path) -> Result<(), String> {
     if let Some(parent) = hooks_path.parent() {
@@ -132,5 +146,39 @@ mod tests {
 
         assert!(command.starts_with("node '"));
         assert!(command.ends_with("codex-status-hook.js'"));
+    }
+
+    #[test]
+    fn resolves_user_hooks_path_under_codex_home() {
+        let home_dir = Path::new("/Users/example");
+
+        assert_eq!(
+            codex_hooks_path(home_dir),
+            PathBuf::from("/Users/example/.codex/hooks.json")
+        );
+    }
+
+    #[test]
+    fn installs_hooks_for_home_using_status_script_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let home_dir = dir.path().join("home");
+        let hook_script_path = dir
+            .path()
+            .join("app")
+            .join("scripts")
+            .join(STATUS_HOOK_MARKER);
+
+        install_hooks_for_home(&home_dir, &hook_script_path).unwrap();
+
+        let hooks_path = home_dir.join(".codex").join("hooks.json");
+        let hooks: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
+        let command = hooks["hooks"]["Stop"][0]["command"].as_str().unwrap();
+
+        assert_eq!(hooks_path, codex_hooks_path(&home_dir));
+        assert_eq!(
+            command,
+            format!("node {}", shell_quote_path(&hook_script_path))
+        );
     }
 }
