@@ -127,6 +127,18 @@ mod tests {
     }
 
     #[test]
+    fn confirmation_sets_yellow_state() {
+        let task = reduce_task(
+            None,
+            NormalizedEvent::ConfirmationRequested {
+                session_id: "s2".into(),
+            },
+        );
+
+        assert_eq!(task.status, TaskStatus::NeedsConfirmation);
+    }
+
+    #[test]
     fn interrupted_sets_flashing_state() {
         let task = reduce_task(
             None,

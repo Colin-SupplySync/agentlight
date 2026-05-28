@@ -4,15 +4,21 @@ pub fn derive_title(prompt: &str) -> String {
         return "Codex task".to_string();
     }
 
-    let mut title = trimmed
-        .replace("帮我", "")
-        .replace("请", "")
-        .replace("一下", "")
-        .replace("并跑测试", "")
-        .replace("并且跑测试", "")
-        .replace("然后跑测试", "")
-        .trim()
-        .to_string();
+    let mut title = trimmed.to_string();
+
+    for prefix in ["请帮我", "帮我", "请"] {
+        if let Some(rest) = title.strip_prefix(prefix) {
+            title = rest.trim().to_string();
+            break;
+        }
+    }
+
+    for suffix in ["并且跑测试", "然后跑测试", "并跑测试", "一下"] {
+        if let Some(rest) = title.strip_suffix(suffix) {
+            title = rest.trim().to_string();
+            break;
+        }
+    }
 
     for separator in ["。", "，", ",", ".", "\n", " and ", " then "] {
         if let Some((head, _)) = title.split_once(separator) {
@@ -46,5 +52,10 @@ mod tests {
     #[test]
     fn falls_back_for_empty_prompt() {
         assert_eq!(derive_title("   "), "Codex task");
+    }
+
+    #[test]
+    fn keeps_meaningful_qing_character_inside_words() {
+        assert_eq!(derive_title("申请权限回归测试"), "申请权限回归测试");
     }
 }
