@@ -36,12 +36,20 @@ impl BarkNotifier {
             self.endpoint_url.trim_end_matches('/'),
             notification_text(notification)
         );
-        let response = self.client.get(url).send().await.map_err(|err| err.to_string())?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|err| err.to_string())?;
 
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(format!("Bark request failed with status {}", response.status()))
+            Err(format!(
+                "Bark request failed with status {}",
+                response.status()
+            ))
         }
     }
 }
