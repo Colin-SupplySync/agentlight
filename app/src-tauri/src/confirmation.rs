@@ -1,13 +1,7 @@
 pub fn needs_confirmation(message: &str) -> bool {
     let normalized = message.to_lowercase();
 
-    let chinese_phrases = [
-        "请选择",
-        "是否继续",
-        "需要确认",
-        "你希望",
-        "要不要",
-    ];
+    let chinese_phrases = ["请选择", "是否继续", "需要确认", "你希望", "要不要"];
     let english_request_phrases = [
         "please confirm",
         "please approve",
@@ -58,6 +52,8 @@ mod tests {
     fn completed_english_summaries_do_not_need_confirmation() {
         assert!(!needs_confirmation("I confirmed the fix and tests pass."));
         assert!(!needs_confirmation("The change was approved by tests."));
-        assert!(!needs_confirmation("I proceeded with the requested update."));
+        assert!(!needs_confirmation(
+            "I proceeded with the requested update."
+        ));
     }
 }
