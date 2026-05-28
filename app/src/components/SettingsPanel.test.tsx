@@ -50,6 +50,34 @@ describe("SettingsPanel", () => {
     });
   });
 
+  it("does not overwrite an unsaved Bark URL draft when settings props refresh", async () => {
+    const { rerender } = render(
+      <SettingsPanel
+        hookStatus="not_installed"
+        settings={settings}
+        onInstallHooks={() => {}}
+        onSaveSettings={() => {}}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText("Bark URL"), "https://draft.example/key");
+
+    rerender(
+      <SettingsPanel
+        hookStatus="installed"
+        settings={{
+          ...settings,
+          barkEndpointUrl: "https://background.example/key",
+          notificationsEnabled: true,
+        }}
+        onInstallHooks={() => {}}
+        onSaveSettings={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText("Bark URL")).toHaveValue("https://draft.example/key");
+  });
+
   it("installs hooks", async () => {
     const onInstallHooks = vi.fn();
     render(

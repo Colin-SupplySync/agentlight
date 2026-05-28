@@ -23,10 +23,27 @@ export function SettingsPanel({
   installing = false,
 }: Props) {
   const [draft, setDraft] = useState(settings);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+    if (!dirty) {
+      setDraft(settings);
+    }
+  }, [dirty, settings]);
+
+  async function handleSave() {
+    try {
+      await onSaveSettings(draft);
+      setDirty(false);
+    } catch (error) {
+      console.warn("Failed to save settings", error);
+    }
+  }
+
+  function updateDraft(nextDraft: AppSettings) {
+    setDirty(true);
+    setDraft(nextDraft);
+  }
 
   return (
     <section className="settings-panel" aria-label="Settings">
@@ -36,7 +53,7 @@ export function SettingsPanel({
           aria-label="Bark URL"
           value={draft.barkEndpointUrl}
           onChange={(event) =>
-            setDraft({ ...draft, barkEndpointUrl: event.currentTarget.value })
+            updateDraft({ ...draft, barkEndpointUrl: event.currentTarget.value })
           }
           placeholder="https://api.day.app/key"
         />
@@ -48,7 +65,7 @@ export function SettingsPanel({
           checked={draft.notificationsEnabled}
           type="checkbox"
           onChange={(event) =>
-            setDraft({ ...draft, notificationsEnabled: event.currentTarget.checked })
+            updateDraft({ ...draft, notificationsEnabled: event.currentTarget.checked })
           }
         />
         <span>{draft.notificationsEnabled ? "Notifications on" : "Notifications off"}</span>
@@ -64,7 +81,7 @@ export function SettingsPanel({
       <button
         className="settings-save"
         type="button"
-        onClick={() => onSaveSettings(draft)}
+        onClick={handleSave}
         disabled={saving}
       >
         {saving ? "Saving" : "Save"}

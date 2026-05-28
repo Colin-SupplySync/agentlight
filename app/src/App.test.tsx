@@ -61,6 +61,20 @@ describe("App", () => {
     expect(listTasks).toHaveBeenCalled();
   });
 
+  it("keeps rendering when task polling rejects", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(listTasks).mockRejectedValueOnce(new Error("task API offline"));
+
+    try {
+      render(<App />);
+
+      expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+      await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("marks a clicked task as viewed and refreshes tasks", async () => {
     vi.mocked(listTasks)
       .mockResolvedValueOnce([

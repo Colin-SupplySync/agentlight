@@ -116,11 +116,6 @@ fn install_user_hooks_and_mark_installed(
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {name}! You've been greeted from Rust!")
-}
-
-#[tauri::command]
 fn list_tasks(state: tauri::State<SharedBackendState>) -> Vec<TaskDto> {
     list_task_dtos_at(&state.store, Instant::now())
 }
@@ -208,8 +203,7 @@ pub fn run() {
             get_settings,
             save_app_settings,
             install_codex_hooks,
-            get_hook_status,
-            greet
+            get_hook_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

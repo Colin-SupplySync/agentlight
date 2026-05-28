@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getHookStatus,
   getSettings,
@@ -21,6 +21,7 @@ const defaultSettings: AppSettings = {
 };
 
 function App() {
+  const mountedRef = useRef(false);
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [hookStatus, setHookStatus] = useState<HookStatus>("not_installed");
@@ -28,30 +29,61 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [installing, setInstalling] = useState(false);
 
-  const refreshTasks = useCallback(async () => {
-    setTasks(await listTasks());
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
-  const refreshSettings = useCallback(async () => {
-    const [nextSettings, nextHookStatus] = await Promise.all([
-      getSettings(),
-      getHookStatus(),
-    ]);
-    setSettings(nextSettings);
-    setHookStatus(nextHookStatus);
+  const refreshTasks = useCallback(async (canUpdate = () => mountedRef.current) => {
+    try {
+      const nextTasks = await listTasks();
+      if (canUpdate()) {
+        setTasks(nextTasks);
+      }
+    } catch (error) {
+      console.warn("Failed to refresh tasks", error);
+    }
+  }, []);
+
+  const refreshSettings = useCallback(async (canUpdate = () => mountedRef.current) => {
+    try {
+      const [nextSettings, nextHookStatus] = await Promise.all([
+        getSettings(),
+        getHookStatus(),
+      ]);
+      if (canUpdate()) {
+        setSettings(nextSettings);
+        setHookStatus(nextHookStatus);
+      }
+    } catch (error) {
+      console.warn("Failed to refresh settings", error);
+    }
   }, []);
 
   useEffect(() => {
-    refreshTasks();
-    refreshSettings();
+    let cancelled = false;
+    const canUpdate = () => !cancelled && mountedRef.current;
+
+    refreshTasks(canUpdate);
+    if (!settingsOpen) {
+      refreshSettings(canUpdate);
+    }
 
     const intervalId = window.setInterval(() => {
-      refreshTasks();
-      refreshSettings();
+      refreshTasks(canUpdate);
+      if (!settingsOpen) {
+        refreshSettings(canUpdate);
+      }
     }, 2500);
 
-    return () => window.clearInterval(intervalId);
-  }, [refreshSettings, refreshTasks]);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [refreshSettings, refreshTasks, settingsOpen]);
 
   async function handleTaskViewed(taskId: string) {
     await markTaskViewed(taskId);
@@ -80,7 +112,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${settingsOpen ? " app-shell--settings-open" : ""}`}>
       <button
         className="settings-button"
         type="button"

@@ -177,6 +177,12 @@ button {
   box-sizing: border-box;
 }
 
+@media (max-width: 720px) {
+  .app-shell--settings-open .task-overlay {
+    top: 160px;
+  }
+}
+
 .task-row {
   width: 100%;
   min-height: 48px;
