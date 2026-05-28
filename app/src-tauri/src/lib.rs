@@ -2,6 +2,7 @@
 mod codex_provider;
 mod confirmation;
 mod domain;
+mod notifier;
 mod task_store;
 mod title;
 
