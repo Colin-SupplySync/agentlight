@@ -2,6 +2,7 @@
 mod codex_provider;
 mod confirmation;
 mod domain;
+mod task_store;
 mod title;
 
 #[tauri::command]
