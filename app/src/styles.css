@@ -16,6 +16,151 @@ button {
   font: inherit;
 }
 
+.app-shell {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.settings-button {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  padding: 6px 9px;
+  border: 1px solid rgba(203, 213, 225, 0.2);
+  border-radius: 6px;
+  color: #e5e7eb;
+  background: rgba(20, 24, 31, 0.9);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-button:hover,
+.settings-save:hover,
+.settings-status button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-button:focus-visible,
+.settings-save:focus-visible,
+.settings-status button:focus-visible,
+.settings-field input:focus-visible,
+.settings-toggle input:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.settings-panel {
+  position: fixed;
+  top: 48px;
+  left: 12px;
+  z-index: 3;
+  width: min(286px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.16);
+  border-radius: 8px;
+  background: rgba(20, 24, 31, 0.96);
+  box-shadow: 0 16px 36px rgba(3, 7, 18, 0.24);
+  box-sizing: border-box;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #cbd5e1;
+  font-size: 11px;
+  line-height: 13px;
+}
+
+.settings-field input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 5px 7px;
+  border: 1px solid rgba(203, 213, 225, 0.2);
+  border-radius: 6px;
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #e5e7eb;
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.settings-toggle input {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
+.settings-toggle span,
+.settings-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #aab2bd;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.settings-status span {
+  flex: 1 1 auto;
+}
+
+.settings-save,
+.settings-status button {
+  flex: 0 0 auto;
+  max-width: 112px;
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.2);
+  border-radius: 6px;
+  color: #e5e7eb;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-save {
+  align-self: flex-end;
+}
+
+.settings-save:disabled,
+.settings-status button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .task-overlay {
   position: fixed;
   top: 16px;

@@ -1,49 +1,106 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useCallback, useEffect, useState } from "react";
+import {
+  getHookStatus,
+  getSettings,
+  installCodexHooks,
+  listTasks,
+  markTaskViewed,
+  saveAppSettings,
+} from "./api";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { TaskOverlay } from "./components/TaskOverlay";
+import "./styles.css";
+import type { AppSettings, HookStatus, TaskDto } from "./types";
+
+const defaultSettings: AppSettings = {
+  barkEndpointUrl: "",
+  codexHooksInstalled: false,
+  notificationsEnabled: false,
+  overlayPosition: "top_right",
+  startAtLogin: false,
+};
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [tasks, setTasks] = useState<TaskDto[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [hookStatus, setHookStatus] = useState<HookStatus>("not_installed");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  const refreshTasks = useCallback(async () => {
+    setTasks(await listTasks());
+  }, []);
+
+  const refreshSettings = useCallback(async () => {
+    const [nextSettings, nextHookStatus] = await Promise.all([
+      getSettings(),
+      getHookStatus(),
+    ]);
+    setSettings(nextSettings);
+    setHookStatus(nextHookStatus);
+  }, []);
+
+  useEffect(() => {
+    refreshTasks();
+    refreshSettings();
+
+    const intervalId = window.setInterval(() => {
+      refreshTasks();
+      refreshSettings();
+    }, 2500);
+
+    return () => window.clearInterval(intervalId);
+  }, [refreshSettings, refreshTasks]);
+
+  async function handleTaskViewed(taskId: string) {
+    await markTaskViewed(taskId);
+    await refreshTasks();
+  }
+
+  async function handleSaveSettings(nextSettings: AppSettings) {
+    setSaving(true);
+    try {
+      const savedSettings = await saveAppSettings(nextSettings);
+      setSettings(savedSettings);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleInstallHooks() {
+    setInstalling(true);
+    try {
+      const installedSettings = await installCodexHooks();
+      setSettings(installedSettings);
+      setHookStatus(await getHookStatus());
+    } finally {
+      setInstalling(false);
+    }
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
+    <main className="app-shell">
+      <button
+        className="settings-button"
+        type="button"
+        onClick={() => setSettingsOpen((isOpen) => !isOpen)}
       >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+        Settings
+      </button>
+
+      {settingsOpen ? (
+        <SettingsPanel
+          hookStatus={hookStatus}
+          installing={installing}
+          saving={saving}
+          settings={settings}
+          onInstallHooks={handleInstallHooks}
+          onSaveSettings={handleSaveSettings}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      ) : null}
+
+      <TaskOverlay tasks={tasks} onTaskViewed={handleTaskViewed} />
     </main>
   );
 }
