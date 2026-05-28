@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crate::domain::{reduce_task, NormalizedEvent, TaskRecord, TaskStatus};
@@ -13,12 +13,14 @@ pub struct NotificationRequest {
 #[derive(Default)]
 pub struct TaskStore {
     tasks: HashMap<String, StoredTask>,
-    notified: Vec<(String, TaskStatus)>,
+    notified: HashSet<(String, TaskStatus)>,
+    next_sequence: u64,
 }
 
 struct StoredTask {
     record: TaskRecord,
     viewed_at: Option<Instant>,
+    sequence: u64,
 }
 
 impl TaskStore {
@@ -28,7 +30,16 @@ impl TaskStore {
 
     pub fn apply_event(&mut self, event: NormalizedEvent) -> Option<NotificationRequest> {
         let task_id = session_id(&event).to_string();
-        let existing = self.tasks.remove(&task_id).map(|task| task.record);
+        let existing_task = self.tasks.remove(&task_id);
+        let sequence = existing_task.as_ref().map_or_else(
+            || {
+                let sequence = self.next_sequence;
+                self.next_sequence += 1;
+                sequence
+            },
+            |task| task.sequence,
+        );
+        let existing = existing_task.map(|task| task.record);
         let task = reduce_task(existing, event);
         let notification = self.notification_for(&task);
 
@@ -37,40 +48,54 @@ impl TaskStore {
             StoredTask {
                 record: task,
                 viewed_at: None,
+                sequence,
             },
         );
 
         notification
     }
 
-    pub fn mark_viewed(&mut self, task_id: &str) {
+    pub fn mark_viewed(&mut self, task_id: &str, now: Instant) {
         if let Some(task) = self.tasks.get_mut(task_id) {
             task.record.viewed = true;
-            task.viewed_at = Some(Instant::now());
+            task.viewed_at = Some(now);
         }
     }
 
-    pub fn remove_expired_viewed(&mut self, delay: Duration) {
-        let now = Instant::now();
-        self.tasks.retain(|_, task| {
-            let expires_when_viewed = matches!(
-                task.record.status,
-                TaskStatus::Completed | TaskStatus::Interrupted
-            );
+    pub fn remove_expired_viewed(&mut self, now: Instant, delay: Duration) {
+        let expired: Vec<String> = self
+            .tasks
+            .iter()
+            .filter_map(|(task_id, task)| {
+                let expires_when_viewed = matches!(
+                    task.record.status,
+                    TaskStatus::Completed | TaskStatus::Interrupted
+                );
 
-            !expires_when_viewed
-                || !task.record.viewed
-                || task
-                    .viewed_at
-                    .is_none_or(|viewed_at| now.duration_since(viewed_at) < delay)
-        });
+                if expires_when_viewed
+                    && task.record.viewed
+                    && task
+                        .viewed_at
+                        .is_some_and(|viewed_at| now.duration_since(viewed_at) >= delay)
+                {
+                    Some(task_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for task_id in expired {
+            self.tasks.remove(&task_id);
+            self.notified
+                .retain(|(notified_task_id, _)| notified_task_id != &task_id);
+        }
     }
 
     pub fn visible_tasks(&self) -> Vec<TaskRecord> {
-        self.tasks
-            .values()
-            .map(|task| task.record.clone())
-            .collect()
+        let mut tasks: Vec<&StoredTask> = self.tasks.values().collect();
+        tasks.sort_by_key(|task| task.sequence);
+        tasks.into_iter().map(|task| task.record.clone()).collect()
     }
 }
 
@@ -87,11 +112,10 @@ impl TaskStore {
         }
 
         let key = (task.id.clone(), task.status.clone());
-        if self.notified.contains(&key) {
+        if !self.notified.insert(key) {
             return None;
         }
 
-        self.notified.push(key);
         Some(NotificationRequest {
             task_id: task.id.clone(),
             status: task.status.clone(),
@@ -192,8 +216,9 @@ mod tests {
         store.apply_event(prompt("s1"));
         store.apply_event(completed("s1"));
 
-        store.mark_viewed("s1");
-        store.remove_expired_viewed(Duration::from_secs(0));
+        let viewed_at = Instant::now();
+        store.mark_viewed("s1", viewed_at);
+        store.remove_expired_viewed(viewed_at, Duration::from_secs(0));
 
         assert!(store.visible_tasks().is_empty());
     }
@@ -204,8 +229,9 @@ mod tests {
         store.apply_event(prompt("s1"));
         store.apply_event(permission("s1"));
 
-        store.mark_viewed("s1");
-        store.remove_expired_viewed(Duration::from_secs(0));
+        let viewed_at = Instant::now();
+        store.mark_viewed("s1", viewed_at);
+        store.remove_expired_viewed(viewed_at, Duration::from_secs(0));
 
         let tasks = store.visible_tasks();
         assert_eq!(tasks.len(), 1);
@@ -219,9 +245,56 @@ mod tests {
         store.apply_event(prompt("s1"));
         store.apply_event(interrupted("s1"));
 
-        store.mark_viewed("s1");
-        store.remove_expired_viewed(Duration::from_secs(0));
+        let viewed_at = Instant::now();
+        store.mark_viewed("s1", viewed_at);
+        store.remove_expired_viewed(viewed_at, Duration::from_secs(0));
 
+        assert!(store.visible_tasks().is_empty());
+    }
+
+    #[test]
+    fn disappeared_task_notifies_again_when_started_again() {
+        let mut store = TaskStore::new();
+        let viewed_at = Instant::now();
+        store.apply_event(prompt("s1"));
+        assert!(store.apply_event(completed("s1")).is_some());
+
+        store.mark_viewed("s1", viewed_at);
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(15), Duration::from_secs(15));
+        assert!(store.visible_tasks().is_empty());
+
+        store.apply_event(prompt("s1"));
+        assert!(store.apply_event(completed("s1")).is_some());
+    }
+
+    #[test]
+    fn visible_tasks_keep_start_order() {
+        let mut store = TaskStore::new();
+        store.apply_event(prompt("s2"));
+        store.apply_event(prompt("s1"));
+        store.apply_event(prompt("s3"));
+
+        let ids: Vec<String> = store
+            .visible_tasks()
+            .into_iter()
+            .map(|task| task.id)
+            .collect();
+
+        assert_eq!(ids, vec!["s2", "s1", "s3"]);
+    }
+
+    #[test]
+    fn completed_task_waits_until_viewed_delay_elapses() {
+        let mut store = TaskStore::new();
+        let viewed_at = Instant::now();
+        store.apply_event(prompt("s1"));
+        store.apply_event(completed("s1"));
+
+        store.mark_viewed("s1", viewed_at);
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(14), Duration::from_secs(15));
+        assert_eq!(store.visible_tasks().len(), 1);
+
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(15), Duration::from_secs(15));
         assert!(store.visible_tasks().is_empty());
     }
 }
