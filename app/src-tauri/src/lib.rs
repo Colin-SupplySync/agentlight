@@ -1,4 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+mod codex_provider;
+mod confirmation;
 mod domain;
 mod title;
 
