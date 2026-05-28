@@ -40,10 +40,10 @@ fn default_hook_script_path() -> Result<PathBuf, String> {
         cwd.join("app").join("scripts").join("codex-status-hook.js"),
     ];
 
-    Ok(candidates
+    candidates
         .into_iter()
         .find(|path| path.exists())
-        .unwrap_or_else(|| cwd.join("scripts").join("codex-status-hook.js")))
+        .ok_or_else(|| "could not find bundled or development codex-status-hook.js".to_string())
 }
 
 fn hook_script_path(app: Option<&tauri::AppHandle>) -> Result<PathBuf, String> {
@@ -113,6 +113,11 @@ fn install_user_hooks_and_mark_installed(
     save_settings(settings_path, &settings)?;
     *state.settings.lock().expect("settings lock poisoned") = settings.clone();
     Ok(settings)
+}
+
+#[tauri::command]
+fn greet(name: &str) -> String {
+    format!("Hello, {name}! You've been greeted from Rust!")
 }
 
 #[tauri::command]
@@ -203,7 +208,8 @@ pub fn run() {
             get_settings,
             save_app_settings,
             install_codex_hooks,
-            get_hook_status
+            get_hook_status,
+            greet
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -214,6 +220,8 @@ mod tests {
     use super::*;
     use crate::domain::NormalizedEvent;
     use crate::settings::OverlayPosition;
+
+    static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
 
     fn prompt(session_id: &str) -> NormalizedEvent {
         NormalizedEvent::UserPromptSubmit {
@@ -290,6 +298,7 @@ mod tests {
         let settings_path = dir.path().join("settings.json");
         let hooks_path = dir.path().join("home").join(".codex").join("hooks.json");
         let hook_script_path = dir.path().join("codex-status-hook.js");
+        std::fs::write(&hook_script_path, "console.log('hook');").unwrap();
         let state = SharedBackendState::new(TaskStore::new(), AppSettings::default());
 
         let settings = install_hooks_and_mark_installed(
@@ -304,5 +313,39 @@ mod tests {
         assert!(state.settings.lock().unwrap().codex_hooks_installed);
         assert!(load_settings(&settings_path).codex_hooks_installed);
         assert!(hooks_path.exists());
+    }
+
+    #[test]
+    fn default_hook_script_path_errors_when_no_candidate_exists() {
+        let _guard = CURRENT_DIR_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let previous_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = default_hook_script_path();
+
+        std::env::set_current_dir(previous_dir).unwrap();
+        let err = result.unwrap_err();
+        assert!(err.contains("codex-status-hook.js"));
+    }
+
+    #[test]
+    fn default_hook_script_path_uses_existing_development_candidate() {
+        let _guard = CURRENT_DIR_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let scripts_dir = dir.path().join("scripts");
+        std::fs::create_dir_all(&scripts_dir).unwrap();
+        let expected = scripts_dir.join("codex-status-hook.js");
+        std::fs::write(&expected, "console.log('hook');").unwrap();
+        let previous_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let resolved = default_hook_script_path().unwrap();
+
+        std::env::set_current_dir(previous_dir).unwrap();
+        assert_eq!(
+            resolved.canonicalize().unwrap(),
+            expected.canonicalize().unwrap()
+        );
     }
 }

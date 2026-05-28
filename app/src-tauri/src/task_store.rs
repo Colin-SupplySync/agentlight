@@ -30,6 +30,11 @@ impl TaskStore {
 
     pub fn apply_event(&mut self, event: NormalizedEvent) -> Option<NotificationRequest> {
         let task_id = session_id(&event).to_string();
+        if matches!(event, NormalizedEvent::UserPromptSubmit { .. }) {
+            self.notified
+                .retain(|(notified_task_id, _)| notified_task_id != &task_id);
+        }
+
         let existing_task = self.tasks.remove(&task_id);
         let sequence = existing_task.as_ref().map_or_else(
             || {
@@ -264,6 +269,18 @@ mod tests {
         assert!(store.visible_tasks().is_empty());
 
         store.apply_event(prompt("s1"));
+        assert!(store.apply_event(completed("s1")).is_some());
+    }
+
+    #[test]
+    fn new_prompt_in_same_session_allows_status_notifications_again() {
+        let mut store = TaskStore::new();
+        store.apply_event(prompt("s1"));
+        assert!(store.apply_event(permission("s1")).is_some());
+
+        store.apply_event(prompt("s1"));
+
+        assert!(store.apply_event(permission("s1")).is_some());
         assert!(store.apply_event(completed("s1")).is_some());
     }
 

@@ -20,6 +20,13 @@ pub fn codex_hooks_path(home_dir: &Path) -> PathBuf {
 }
 
 pub fn install_hooks(hooks_path: &Path, hook_script_path: &Path) -> Result<(), String> {
+    if !hook_script_path.exists() {
+        return Err(format!(
+            "hook script does not exist: {}",
+            hook_script_path.display()
+        ));
+    }
+
     if let Some(parent) = hooks_path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
@@ -78,11 +85,19 @@ fn shell_quote_path(path: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn write_hook_script(path: &Path) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, "console.log('hook');").unwrap();
+    }
+
     #[test]
     fn creates_hooks_json_with_codex_status_hooks() {
         let dir = tempfile::tempdir().unwrap();
         let hooks_path = dir.path().join(".codex").join("hooks.json");
         let hook_script_path = dir.path().join("codex-status-hook.js");
+        write_hook_script(&hook_script_path);
 
         install_hooks(&hooks_path, &hook_script_path).unwrap();
 
@@ -103,6 +118,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let hooks_path = dir.path().join(".codex").join("hooks.json");
         let hook_script_path = dir.path().join("codex-status-hook.js");
+        write_hook_script(&hook_script_path);
         std::fs::create_dir_all(hooks_path.parent().unwrap()).unwrap();
         std::fs::write(
             &hooks_path,
@@ -137,6 +153,7 @@ mod tests {
             .path()
             .join("folder with spaces")
             .join("codex-status-hook.js");
+        write_hook_script(&hook_script_path);
 
         install_hooks(&hooks_path, &hook_script_path).unwrap();
 
@@ -167,6 +184,7 @@ mod tests {
             .join("app")
             .join("scripts")
             .join(STATUS_HOOK_MARKER);
+        write_hook_script(&hook_script_path);
 
         install_hooks_for_home(&home_dir, &hook_script_path).unwrap();
 
@@ -180,5 +198,17 @@ mod tests {
             command,
             format!("node {}", shell_quote_path(&hook_script_path))
         );
+    }
+
+    #[test]
+    fn refuses_to_install_when_status_script_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks_path = dir.path().join(".codex").join("hooks.json");
+        let hook_script_path = dir.path().join("missing-codex-status-hook.js");
+
+        let err = install_hooks(&hooks_path, &hook_script_path).unwrap_err();
+
+        assert!(err.contains("hook script does not exist"));
+        assert!(!hooks_path.exists());
     }
 }
