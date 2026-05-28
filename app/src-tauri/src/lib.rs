@@ -2,7 +2,9 @@
 mod codex_provider;
 mod confirmation;
 mod domain;
+mod hook_installer;
 mod notifier;
+mod settings;
 mod task_store;
 mod title;
 
