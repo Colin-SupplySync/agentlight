@@ -11,6 +11,7 @@ import {
   listTasks,
   markTaskViewed,
   saveAppSettings,
+  setOverlayWindowBounds,
 } from "./api";
 
 vi.mock("./api", () => ({
@@ -20,6 +21,7 @@ vi.mock("./api", () => ({
   listTasks: vi.fn(),
   markTaskViewed: vi.fn(),
   saveAppSettings: vi.fn(),
+  setOverlayWindowBounds: vi.fn(),
 }));
 
 const defaultSettings = {
@@ -46,6 +48,7 @@ describe("App", () => {
     ]);
     vi.mocked(markTaskViewed).mockResolvedValue(undefined);
     vi.mocked(saveAppSettings).mockResolvedValue(defaultSettings);
+    vi.mocked(setOverlayWindowBounds).mockResolvedValue(undefined);
     vi.mocked(installCodexHooks).mockResolvedValue({
       ...defaultSettings,
       codexHooksInstalled: true,

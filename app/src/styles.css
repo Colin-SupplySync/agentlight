@@ -32,6 +32,30 @@ button {
   overflow: hidden;
 }
 
+.top-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.drag-handle {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 24px;
+  border: 1px solid rgba(203, 213, 225, 0.2);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle, rgba(203, 213, 225, 0.72) 1px, transparent 1.5px) 4px 5px / 5px 5px,
+    rgba(20, 24, 31, 0.82);
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 .settings-button {
   flex: 0 0 auto;
   max-width: 100%;

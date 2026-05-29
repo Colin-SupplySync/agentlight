@@ -6,6 +6,7 @@ import {
   listTasks,
   markTaskViewed,
   saveAppSettings,
+  setOverlayWindowBounds,
 } from "./api";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TaskOverlay } from "./components/TaskOverlay";
@@ -19,52 +20,6 @@ const defaultSettings: AppSettings = {
   overlayPosition: "top_right",
   startAtLogin: false,
 };
-
-function desiredWindowSize(settingsOpen: boolean, taskCount: number) {
-  const hasTasks = taskCount > 0;
-  const width = hasTasks ? 392 : settingsOpen ? 316 : 104;
-  const settingsHeight = settingsOpen ? 152 : 0;
-  const taskHeight = hasTasks ? 18 + taskCount * 48 + Math.max(0, taskCount - 1) * 8 : 0;
-  const contentHeight = 16 + 28 + (settingsOpen ? 8 + settingsHeight : 0)
-    + (hasTasks ? 8 + taskHeight : 0);
-
-  return {
-    width,
-    height: Math.min(320, Math.max(48, contentHeight)),
-  };
-}
-
-async function syncOverlayWindowBounds(settingsOpen: boolean, taskCount: number) {
-  if (!("__TAURI_INTERNALS__" in window)) {
-    return;
-  }
-
-  try {
-    const { getCurrentWindow, currentMonitor, primaryMonitor, LogicalSize, PhysicalPosition } =
-      await import("@tauri-apps/api/window");
-    const appWindow = getCurrentWindow();
-    const size = desiredWindowSize(settingsOpen, taskCount);
-    await appWindow.setSize(new LogicalSize(size.width, size.height));
-
-    const monitor = (await currentMonitor()) ?? (await primaryMonitor());
-    if (!monitor) {
-      return;
-    }
-
-    const scaleFactor = monitor.scaleFactor;
-    const x = monitor.workArea.position.x
-      + monitor.workArea.size.width
-      - Math.round(size.width * scaleFactor)
-      - Math.round(16 * scaleFactor);
-    const y = monitor.workArea.position.y + Math.round(16 * scaleFactor);
-
-    await appWindow.setPosition(
-      new PhysicalPosition(Math.max(monitor.workArea.position.x, x), y),
-    );
-  } catch (error) {
-    console.warn("Failed to sync overlay window bounds", error);
-  }
-}
 
 function App() {
   const mountedRef = useRef(false);
@@ -132,7 +87,9 @@ function App() {
   }, [refreshSettings, refreshTasks, settingsOpen]);
 
   useEffect(() => {
-    syncOverlayWindowBounds(settingsOpen, tasks.length);
+    setOverlayWindowBounds(settingsOpen, tasks.length).catch((error) => {
+      console.warn("Failed to sync overlay window bounds", error);
+    });
   }, [settingsOpen, tasks.length]);
 
   async function handleTaskViewed(taskId: string) {
@@ -163,13 +120,21 @@ function App() {
 
   return (
     <main className={`app-shell${settingsOpen ? " app-shell--settings-open" : ""}`}>
-      <button
-        className="settings-button"
-        type="button"
-        onClick={() => setSettingsOpen((isOpen) => !isOpen)}
-      >
-        Settings
-      </button>
+      <div className="top-bar">
+        <div
+          className="drag-handle"
+          data-tauri-drag-region
+          aria-label="Move window"
+          title="Move window"
+        />
+        <button
+          className="settings-button"
+          type="button"
+          onClick={() => setSettingsOpen((isOpen) => !isOpen)}
+        >
+          Settings
+        </button>
+      </div>
 
       {settingsOpen ? (
         <SettingsPanel

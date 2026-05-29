@@ -21,10 +21,11 @@ use hook_installer::install_user_hooks;
 use hook_server::{router as hook_router, SharedBackendState};
 use settings::{load_settings, save_settings, AppSettings};
 use task_store::TaskStore;
-use tauri::{Manager, PhysicalPosition};
+use tauri::{LogicalSize, Manager, PhysicalPosition};
 
 const HOOK_SERVER_ADDR: &str = "127.0.0.1:17321";
 const VIEWED_EXPIRATION: Duration = Duration::from_secs(15);
+const OVERLAY_MARGIN: i32 = 16;
 
 fn settings_path() -> Result<PathBuf, String> {
     dirs::home_dir()
@@ -77,6 +78,57 @@ fn save_settings_to_state(
     save_settings(settings_path, &settings)?;
     *state.settings.lock().expect("settings lock poisoned") = settings.clone();
     Ok(settings)
+}
+
+fn overlay_window_size(settings_open: bool, task_count: usize) -> (f64, f64) {
+    let has_tasks = task_count > 0;
+    let width = if has_tasks {
+        392.0
+    } else if settings_open {
+        316.0
+    } else {
+        132.0
+    };
+    let settings_height = if settings_open { 152.0 } else { 0.0 };
+    let task_height = if has_tasks {
+        18.0 + task_count as f64 * 48.0 + task_count.saturating_sub(1) as f64 * 8.0
+    } else {
+        0.0
+    };
+    let content_height = 16.0
+        + 28.0
+        + if settings_open {
+            8.0 + settings_height
+        } else {
+            0.0
+        }
+        + if has_tasks { 8.0 + task_height } else { 0.0 };
+
+    (width, content_height.clamp(48.0, 320.0))
+}
+
+fn position_overlay_window(window: &tauri::WebviewWindow, logical_width: f64) {
+    match window.current_monitor().or_else(|_| window.primary_monitor()) {
+        Ok(Some(monitor)) => {
+            let work_area = monitor.work_area();
+            let physical_width = (logical_width * monitor.scale_factor()).round() as i32;
+            let x = work_area.position.x + work_area.size.width as i32
+                - physical_width
+                - OVERLAY_MARGIN;
+            let y = work_area.position.y + OVERLAY_MARGIN;
+            if let Err(err) =
+                window.set_position(PhysicalPosition::new(x.max(work_area.position.x), y))
+            {
+                eprintln!("failed to position overlay window: {err}");
+            }
+        }
+        Ok(None) => {
+            eprintln!("no monitor available for overlay window positioning");
+        }
+        Err(err) => {
+            eprintln!("failed to read monitor for overlay window positioning: {err}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -171,6 +223,23 @@ fn get_hook_status(state: tauri::State<SharedBackendState>) -> String {
     }
 }
 
+#[tauri::command]
+fn set_overlay_window_bounds(
+    app: tauri::AppHandle,
+    settings_open: bool,
+    task_count: usize,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    let (width, height) = overlay_window_size(settings_open, task_count);
+    window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|err| err.to_string())?;
+    position_overlay_window(&window, width);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let state = SharedBackendState::new(
@@ -184,37 +253,8 @@ pub fn run() {
         .manage(state)
         .setup(move |app| {
             if let Some(window) = app.get_webview_window("main") {
-                match window
-                    .current_monitor()
-                    .or_else(|_| window.primary_monitor())
-                {
-                    Ok(Some(monitor)) => {
-                        let work_area = monitor.work_area();
-                        match window.outer_size() {
-                            Ok(window_size) => {
-                                let x = work_area.position.x + work_area.size.width as i32
-                                    - window_size.width as i32
-                                    - 16;
-                                let y = work_area.position.y + 16;
-                                if let Err(err) = window.set_position(PhysicalPosition::new(
-                                    x.max(work_area.position.x),
-                                    y,
-                                )) {
-                                    eprintln!("failed to position overlay window: {err}");
-                                }
-                            }
-                            Err(err) => {
-                                eprintln!("failed to read overlay window size: {err}");
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        eprintln!("no monitor available for overlay window positioning");
-                    }
-                    Err(err) => {
-                        eprintln!("failed to read monitor for overlay window positioning: {err}");
-                    }
-                }
+                let (width, _) = overlay_window_size(false, 0);
+                position_overlay_window(&window, width);
             }
 
             tauri::async_runtime::spawn(async move {
@@ -237,7 +277,8 @@ pub fn run() {
             get_settings,
             save_app_settings,
             install_codex_hooks,
-            get_hook_status
+            get_hook_status,
+            set_overlay_window_bounds
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

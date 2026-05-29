@@ -63,3 +63,10 @@ export async function installCodexHooks(): Promise<AppSettings> {
 export async function getHookStatus(): Promise<HookStatus> {
   return invoke<HookStatus>("get_hook_status");
 }
+
+export async function setOverlayWindowBounds(
+  settingsOpen: boolean,
+  taskCount: number,
+): Promise<void> {
+  await invoke("set_overlay_window_bounds", { settingsOpen, taskCount });
+}
