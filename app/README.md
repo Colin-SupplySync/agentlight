@@ -49,7 +49,7 @@ With the app running, click `Install hooks` in settings. This updates:
 ~/.codex/hooks.json
 ```
 
-The installer adds commands for `UserPromptSubmit`, `PermissionRequest`, and `Stop` while preserving existing hook entries. Each installed entry runs the bundled script with Node and forwards Codex hook JSON from stdin to the local Tauri endpoint.
+The installer adds commands for `UserPromptSubmit`, `PermissionRequest`, `Stop`, `Error`, `ToolFailure`, and `ConnectionLost` while preserving existing hook entries. Each installed entry runs the bundled script with Node and forwards Codex hook JSON from stdin to the local Tauri endpoint.
 
 ## Manual Hook Verification
 
@@ -104,5 +104,16 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 ```
 
 Expected state: the task changes to `需要确认` (`needs_confirmation`).
+
+### ConnectionLost
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST http://127.0.0.1:17321/codex-hook \
+  -H "content-type: application/json" \
+  -d '{"hook_event_name":"ConnectionLost","session_id":"manual-s3","error":"connection lost"}'
+```
+
+Expected state: the task changes to `异常中断` (`interrupted`) with red and yellow dots flashing.
 
 When finished, stop `npm run tauri dev` with `Ctrl+C`.

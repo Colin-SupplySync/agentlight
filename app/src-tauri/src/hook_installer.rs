@@ -2,7 +2,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-const HOOK_NAMES: [&str; 3] = ["UserPromptSubmit", "PermissionRequest", "Stop"];
+const HOOK_NAMES: [&str; 6] = [
+    "UserPromptSubmit",
+    "PermissionRequest",
+    "Stop",
+    "Error",
+    "ToolFailure",
+    "ConnectionLost",
+];
 const STATUS_HOOK_MARKER: &str = "codex-status-hook.js";
 
 pub fn install_user_hooks(hook_script_path: &Path) -> Result<(), String> {
@@ -105,7 +112,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
         let command = format!("node {}", shell_quote_path(&hook_script_path));
 
-        for hook_name in ["UserPromptSubmit", "PermissionRequest", "Stop"] {
+        for hook_name in HOOK_NAMES {
             assert_eq!(
                 hooks["hooks"][hook_name],
                 serde_json::json!([{ "command": command }])
@@ -198,6 +205,23 @@ mod tests {
             command,
             format!("node {}", shell_quote_path(&hook_script_path))
         );
+    }
+
+    #[test]
+    fn installs_interruption_hooks() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks_path = dir.path().join(".codex").join("hooks.json");
+        let hook_script_path = dir.path().join("codex-status-hook.js");
+        write_hook_script(&hook_script_path);
+
+        install_hooks(&hooks_path, &hook_script_path).unwrap();
+
+        let hooks: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
+
+        for hook_name in ["Error", "ToolFailure", "ConnectionLost"] {
+            assert!(hooks["hooks"][hook_name].is_array());
+        }
     }
 
     #[test]

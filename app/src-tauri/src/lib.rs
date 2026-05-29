@@ -21,7 +21,7 @@ use hook_installer::install_user_hooks;
 use hook_server::{router as hook_router, SharedBackendState};
 use settings::{load_settings, save_settings, AppSettings};
 use task_store::TaskStore;
-use tauri::Manager;
+use tauri::{Manager, PhysicalPosition};
 
 const HOOK_SERVER_ADDR: &str = "127.0.0.1:17321";
 const VIEWED_EXPIRATION: Duration = Duration::from_secs(15);
@@ -182,7 +182,41 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(state)
-        .setup(move |_app| {
+        .setup(move |app| {
+            if let Some(window) = app.get_webview_window("main") {
+                match window
+                    .current_monitor()
+                    .or_else(|_| window.primary_monitor())
+                {
+                    Ok(Some(monitor)) => {
+                        let work_area = monitor.work_area();
+                        match window.outer_size() {
+                            Ok(window_size) => {
+                                let x = work_area.position.x + work_area.size.width as i32
+                                    - window_size.width as i32
+                                    - 16;
+                                let y = work_area.position.y + 16;
+                                if let Err(err) = window.set_position(PhysicalPosition::new(
+                                    x.max(work_area.position.x),
+                                    y,
+                                )) {
+                                    eprintln!("failed to position overlay window: {err}");
+                                }
+                            }
+                            Err(err) => {
+                                eprintln!("failed to read overlay window size: {err}");
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        eprintln!("no monitor available for overlay window positioning");
+                    }
+                    Err(err) => {
+                        eprintln!("failed to read monitor for overlay window positioning: {err}");
+                    }
+                }
+            }
+
             tauri::async_runtime::spawn(async move {
                 match tokio::net::TcpListener::bind(HOOK_SERVER_ADDR).await {
                     Ok(listener) => {
