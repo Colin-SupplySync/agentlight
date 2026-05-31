@@ -2,14 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-const HOOK_NAMES: [&str; 6] = [
-    "UserPromptSubmit",
-    "PermissionRequest",
-    "Stop",
-    "Error",
-    "ToolFailure",
-    "ConnectionLost",
-];
+const HOOK_NAMES: [&str; 3] = ["UserPromptSubmit", "PermissionRequest", "Stop"];
 const STATUS_HOOK_MARKER: &str = "codex-status-hook.js";
 
 pub fn install_user_hooks(hook_script_path: &Path) -> Result<(), String> {
@@ -70,13 +63,8 @@ pub fn install_hooks(hooks_path: &Path, hook_script_path: &Path) -> Result<(), S
         let entries = hook_entries
             .as_array_mut()
             .expect("hook entries were normalized to array");
-        entries.retain(|entry| {
-            entry
-                .get("command")
-                .and_then(Value::as_str)
-                .is_none_or(|existing_command| !existing_command.contains(STATUS_HOOK_MARKER))
-        });
-        entries.push(json!({ "command": command }));
+        entries.retain(|entry| !contains_status_hook_marker(entry));
+        entries.push(status_hook_entry(&command));
     }
 
     let contents = serde_json::to_string_pretty(&root).map_err(|err| err.to_string())?;
@@ -88,6 +76,25 @@ fn shell_quote_path(path: &Path) -> String {
     format!("'{}'", path.replace('\'', "'\\''"))
 }
 
+fn status_hook_entry(command: &str) -> Value {
+    json!({
+        "hooks": [{
+            "type": "command",
+            "command": command,
+            "timeout": 5
+        }]
+    })
+}
+
+fn contains_status_hook_marker(value: &Value) -> bool {
+    match value {
+        Value::String(text) => text.contains(STATUS_HOOK_MARKER),
+        Value::Array(values) => values.iter().any(contains_status_hook_marker),
+        Value::Object(object) => object.values().any(contains_status_hook_marker),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +104,16 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(path, "console.log('hook');").unwrap();
+    }
+
+    fn installed_command<'a>(
+        hooks: &'a serde_json::Value,
+        hook_name: &str,
+        index: usize,
+    ) -> &'a str {
+        hooks["hooks"][hook_name][index]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
     }
 
     #[test]
@@ -115,7 +132,13 @@ mod tests {
         for hook_name in HOOK_NAMES {
             assert_eq!(
                 hooks["hooks"][hook_name],
-                serde_json::json!([{ "command": command }])
+                serde_json::json!([{
+                    "hooks": [{
+                        "type": "command",
+                        "command": command,
+                        "timeout": 5
+                    }]
+                }])
             );
         }
     }
@@ -149,7 +172,59 @@ mod tests {
         assert!(stop_hooks
             .iter()
             .any(|hook| hook["command"] == "node /existing/hook.js"));
+        assert!(stop_hooks.iter().any(|hook| {
+            hook["hooks"][0]["command"]
+                .as_str()
+                .is_some_and(|command| command.contains(STATUS_HOOK_MARKER))
+        }));
         assert_eq!(stop_hooks.len(), 2);
+    }
+
+    #[test]
+    fn replaces_existing_status_hooks_from_old_and_new_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks_path = dir.path().join(".codex").join("hooks.json");
+        let hook_script_path = dir.path().join("codex-status-hook.js");
+        write_hook_script(&hook_script_path);
+        std::fs::create_dir_all(hooks_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &hooks_path,
+            serde_json::json!({
+                "hooks": {
+                    "Stop": [
+                        { "command": "node /old/codex-status-hook.js" },
+                        {
+                            "hooks": [{
+                                "type": "command",
+                                "command": "node /new/codex-status-hook.js",
+                                "timeout": 5
+                            }]
+                        },
+                        { "command": "node /existing/hook.js" }
+                    ]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        install_hooks(&hooks_path, &hook_script_path).unwrap();
+
+        let hooks: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
+        let stop_hooks = hooks["hooks"]["Stop"].as_array().unwrap();
+
+        assert_eq!(stop_hooks.len(), 2);
+        assert!(stop_hooks
+            .iter()
+            .any(|hook| hook["command"] == "node /existing/hook.js"));
+        assert_eq!(
+            stop_hooks
+                .iter()
+                .filter(|hook| hook.to_string().contains(STATUS_HOOK_MARKER))
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -166,7 +241,7 @@ mod tests {
 
         let hooks: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
-        let command = hooks["hooks"]["Stop"][0]["command"].as_str().unwrap();
+        let command = installed_command(&hooks, "Stop", 0);
 
         assert!(command.starts_with("node '"));
         assert!(command.ends_with("codex-status-hook.js'"));
@@ -198,7 +273,7 @@ mod tests {
         let hooks_path = home_dir.join(".codex").join("hooks.json");
         let hooks: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
-        let command = hooks["hooks"]["Stop"][0]["command"].as_str().unwrap();
+        let command = installed_command(&hooks, "Stop", 0);
 
         assert_eq!(hooks_path, codex_hooks_path(&home_dir));
         assert_eq!(
@@ -208,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn installs_interruption_hooks() {
+    fn installs_only_supported_codex_lifecycle_hooks() {
         let dir = tempfile::tempdir().unwrap();
         let hooks_path = dir.path().join(".codex").join("hooks.json");
         let hook_script_path = dir.path().join("codex-status-hook.js");
@@ -219,8 +294,12 @@ mod tests {
         let hooks: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
 
-        for hook_name in ["Error", "ToolFailure", "ConnectionLost"] {
+        for hook_name in ["UserPromptSubmit", "PermissionRequest", "Stop"] {
             assert!(hooks["hooks"][hook_name].is_array());
+        }
+
+        for hook_name in ["Error", "ToolFailure", "ConnectionLost"] {
+            assert!(hooks["hooks"].get(hook_name).is_none());
         }
     }
 

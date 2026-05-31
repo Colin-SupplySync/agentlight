@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod codex_provider;
+mod codex_sessions;
 mod confirmation;
 mod domain;
 mod dto;
@@ -82,33 +83,30 @@ fn save_settings_to_state(
 
 fn overlay_window_size(settings_open: bool, task_count: usize) -> (f64, f64) {
     let has_tasks = task_count > 0;
-    let width = if has_tasks {
-        392.0
-    } else if settings_open {
-        316.0
-    } else {
-        132.0
-    };
+    if !has_tasks && !settings_open {
+        return (1.0, 1.0);
+    }
+
+    let width = if has_tasks { 392.0 } else { 316.0 };
     let settings_height = if settings_open { 152.0 } else { 0.0 };
     let task_height = if has_tasks {
-        18.0 + task_count as f64 * 48.0 + task_count.saturating_sub(1) as f64 * 8.0
+        task_count as f64 * 36.0 + task_count.saturating_sub(1) as f64 * 6.0
     } else {
         0.0
     };
-    let content_height = 16.0
-        + 28.0
-        + if settings_open {
-            8.0 + settings_height
-        } else {
-            0.0
-        }
-        + if has_tasks { 8.0 + task_height } else { 0.0 };
+    let content_height = 12.0
+        + if settings_open { settings_height } else { 0.0 }
+        + if settings_open && has_tasks { 6.0 } else { 0.0 }
+        + if has_tasks { task_height } else { 0.0 };
 
-    (width, content_height.clamp(48.0, 320.0))
+    (width, content_height.clamp(1.0, 320.0))
 }
 
 fn position_overlay_window(window: &tauri::WebviewWindow, logical_width: f64) {
-    match window.current_monitor().or_else(|_| window.primary_monitor()) {
+    match window
+        .current_monitor()
+        .or_else(|_| window.primary_monitor())
+    {
         Ok(Some(monitor)) => {
             let work_area = monitor.work_area();
             let physical_width = (logical_width * monitor.scale_factor()).round() as i32;
@@ -297,6 +295,23 @@ mod tests {
             session_id: session_id.into(),
             prompt: "修复登录页并跑测试".into(),
         }
+    }
+
+    #[test]
+    fn overlay_window_collapses_when_empty_and_settings_closed() {
+        assert_eq!(overlay_window_size(false, 0), (1.0, 1.0));
+    }
+
+    #[test]
+    fn overlay_window_uses_task_content_height_without_header_gap() {
+        assert_eq!(overlay_window_size(false, 1), (392.0, 48.0));
+        assert_eq!(overlay_window_size(false, 2), (392.0, 90.0));
+    }
+
+    #[test]
+    fn overlay_window_keeps_room_for_settings_panel_when_open() {
+        assert_eq!(overlay_window_size(true, 0), (316.0, 164.0));
+        assert_eq!(overlay_window_size(true, 1), (392.0, 206.0));
     }
 
     #[test]

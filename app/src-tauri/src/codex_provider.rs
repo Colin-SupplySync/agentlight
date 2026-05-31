@@ -1,8 +1,10 @@
 use serde::Deserialize;
+use std::path::PathBuf;
 
 use crate::confirmation::needs_confirmation;
 use crate::domain::NormalizedEvent;
 
+#[cfg_attr(test, allow(dead_code))]
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct CodexHookPayload {
     #[serde(default)]
@@ -11,6 +13,20 @@ pub struct CodexHookPayload {
     pub hook_event_name: String,
     #[serde(default)]
     pub session_id: String,
+    #[serde(default)]
+    pub transcript_path: Option<PathBuf>,
+    #[serde(default)]
+    pub agent_transcript_path: Option<PathBuf>,
+    #[serde(default)]
+    pub cwd: String,
+    #[serde(default)]
+    pub permission_mode: String,
+    #[serde(default)]
+    pub tool_name: String,
+    #[serde(default)]
+    pub agent_id: String,
+    #[serde(default)]
+    pub agent_type: String,
     #[serde(default)]
     pub prompt: String,
     #[serde(default)]

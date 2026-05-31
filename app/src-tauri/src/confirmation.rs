@@ -1,7 +1,16 @@
 pub fn needs_confirmation(message: &str) -> bool {
     let normalized = message.to_lowercase();
 
-    let chinese_phrases = ["请选择", "是否继续", "需要确认", "你希望", "要不要"];
+    let chinese_phrases = [
+        "请选择",
+        "是否继续",
+        "请确认",
+        "需要你确认",
+        "需要您确认",
+        "等待确认",
+        "你希望",
+        "要不要",
+    ];
     let english_request_phrases = [
         "please confirm",
         "please approve",
@@ -30,6 +39,7 @@ mod tests {
     fn detects_chinese_confirmation_phrases() {
         assert!(needs_confirmation("请选择一个选项继续"));
         assert!(needs_confirmation("是否继续执行下一步？"));
+        assert!(needs_confirmation("需要你确认后我再继续。"));
         assert!(needs_confirmation("你希望我现在提交吗？"));
     }
 
@@ -54,6 +64,13 @@ mod tests {
         assert!(!needs_confirmation("The change was approved by tests."));
         assert!(!needs_confirmation(
             "I proceeded with the requested update."
+        ));
+    }
+
+    #[test]
+    fn status_explanations_do_not_need_confirmation() {
+        assert!(!needs_confirmation(
+            "需要权限 / 需要确认：如果你不点，它会一直显示；如果你点过这条任务，15 秒后消失。"
         ));
     }
 }

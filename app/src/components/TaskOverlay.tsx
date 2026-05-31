@@ -1,6 +1,6 @@
 import type { TaskDto } from "../types";
 import "../styles.css";
-import { TrafficDots } from "./TrafficDots";
+import { StatusChip } from "./StatusChip";
 
 type Props = {
   tasks: TaskDto[];
@@ -22,6 +22,10 @@ function statusLabel(status: TaskDto["status"]) {
   }
 }
 
+function taskLabel(task: TaskDto) {
+  return `${statusLabel(task.status)}：${task.title}`;
+}
+
 export function TaskOverlay({ tasks, onTaskViewed }: Props) {
   if (tasks.length === 0) {
     return null;
@@ -30,19 +34,25 @@ export function TaskOverlay({ tasks, onTaskViewed }: Props) {
   return (
     <aside className="task-overlay" aria-label="Codex task status">
       {tasks.map((task) => (
-        <button
-          className="task-row"
+        <div
+          className={`task-row task-row--${task.status}`}
           key={task.id}
-          type="button"
+          role="button"
+          tabIndex={0}
           onClick={() => onTaskViewed(task.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onTaskViewed(task.id);
+            }
+          }}
         >
-          <TrafficDots status={task.status} />
+          <StatusChip status={task.status} />
           <span className="task-copy">
-            <span className="task-title">{task.title}</span>
-            <span className="task-status">{statusLabel(task.status)}</span>
+            <span className="task-title">{taskLabel(task)}</span>
           </span>
           <span className="provider-marker">{task.provider}</span>
-        </button>
+        </div>
       ))}
     </aside>
   );

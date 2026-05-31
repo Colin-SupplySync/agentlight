@@ -34,7 +34,7 @@ const defaultSettings = {
 
 describe("App", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.mocked(getSettings).mockResolvedValue(defaultSettings);
     vi.mocked(getHookStatus).mockResolvedValue("not_installed");
     vi.mocked(listTasks).mockResolvedValue([
@@ -58,7 +58,7 @@ describe("App", () => {
   it("loads settings and renders task overlay", async () => {
     render(<App />);
 
-    expect(await screen.findByText("修复登录页权限判断")).toBeInTheDocument();
+    expect(await screen.findByText("需要权限：修复登录页权限判断")).toBeInTheDocument();
     expect(getSettings).toHaveBeenCalled();
     expect(getHookStatus).toHaveBeenCalled();
     expect(listTasks).toHaveBeenCalled();
@@ -69,13 +69,23 @@ describe("App", () => {
     vi.mocked(listTasks).mockRejectedValueOnce(new Error("task API offline"));
 
     try {
-      render(<App />);
+      const { container } = render(<App />);
 
-      expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
       await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+      expect(container.querySelector(".app-shell--hidden")).toBeInTheDocument();
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  it("hides the shell when there are no visible tasks", async () => {
+    vi.mocked(listTasks).mockResolvedValue([]);
+
+    const { container } = render(<App />);
+
+    await waitFor(() => expect(setOverlayWindowBounds).toHaveBeenCalledWith(false, 0));
+    expect(container.querySelector(".app-shell--hidden")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
   });
 
   it("marks a clicked task as viewed and refreshes tasks", async () => {
@@ -93,7 +103,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByText("修复登录页权限判断"));
+    await userEvent.click(await screen.findByText("需要权限：修复登录页权限判断"));
 
     expect(markTaskViewed).toHaveBeenCalledWith("s1");
     await waitFor(() => expect(listTasks).toHaveBeenCalledTimes(2));

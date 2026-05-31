@@ -1,6 +1,6 @@
 {
-  "name": "app",
-  "private": true,
+  "name": "agentlight",
+  "private": false,
   "version": "0.1.0",
   "type": "module",
   "scripts": {

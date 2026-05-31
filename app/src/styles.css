@@ -20,62 +20,70 @@ button {
 }
 
 .app-shell {
+  position: relative;
   width: 100vw;
   height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px;
-  background: transparent;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(203, 213, 225, 0.14);
+  border-radius: 8px;
+  background: rgba(20, 24, 31, 0.96);
+  box-shadow: 0 18px 42px rgba(3, 7, 18, 0.26);
   box-sizing: border-box;
   overflow: hidden;
-}
-
-.top-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-}
-
-.drag-handle {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 24px;
-  border: 1px solid rgba(203, 213, 225, 0.2);
-  border-radius: 6px;
-  background:
-    radial-gradient(circle, rgba(203, 213, 225, 0.72) 1px, transparent 1.5px) 4px 5px / 5px 5px,
-    rgba(20, 24, 31, 0.82);
   cursor: grab;
 }
 
-.drag-handle:active {
+.app-shell--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.app-shell:active {
   cursor: grabbing;
 }
 
 .settings-button {
-  flex: 0 0 auto;
-  max-width: 100%;
-  overflow: hidden;
-  padding: 6px 9px;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1px solid rgba(203, 213, 225, 0.2);
   border-radius: 6px;
   color: #e5e7eb;
   background: rgba(20, 24, 31, 0.9);
   cursor: pointer;
-  font-size: 12px;
-  line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.settings-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .settings-button:hover,
 .settings-save:hover,
 .settings-status button:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-button:hover,
+.settings-button:focus-visible {
+  opacity: 1;
 }
 
 .settings-button:focus-visible,
@@ -95,11 +103,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 10px;
+  padding: 10px 40px 10px 10px;
   border: 1px solid rgba(203, 213, 225, 0.16);
   border-radius: 8px;
-  background: rgba(20, 24, 31, 0.96);
-  box-shadow: 0 16px 36px rgba(3, 7, 18, 0.24);
+  background: rgba(255, 255, 255, 0.04);
   box-sizing: border-box;
 }
 
@@ -124,6 +131,7 @@ button {
   box-sizing: border-box;
   font-size: 12px;
   line-height: 16px;
+  cursor: text;
 }
 
 .settings-toggle {
@@ -200,33 +208,40 @@ button {
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid rgba(203, 213, 225, 0.14);
-  border-radius: 8px;
-  background: rgba(20, 24, 31, 0.94);
-  box-shadow: 0 18px 42px rgba(3, 7, 18, 0.26);
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   box-sizing: border-box;
 }
 
 .task-row {
   width: 100%;
-  min-height: 48px;
+  min-height: 36px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border: 0;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
   color: #f8fafc;
-  background: rgba(255, 255, 255, 0.06);
-  cursor: pointer;
+  background: rgba(17, 24, 39, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 18px rgba(2, 6, 23, 0.18);
+  cursor: grab;
   text-align: left;
   box-sizing: border-box;
+  user-select: none;
+}
+
+.task-row:first-child {
+  padding-right: 38px;
 }
 
 .task-row:hover {
-  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(203, 213, 225, 0.26);
+  background: rgba(24, 32, 45, 0.98);
 }
 
 .task-row:focus-visible {
@@ -234,49 +249,106 @@ button {
   outline-offset: 2px;
 }
 
-.traffic-dots {
-  display: flex;
+.task-row:active {
+  cursor: grabbing;
+}
+
+.task-row--executing {
+  background:
+    radial-gradient(circle at 33px 50%, rgba(34, 197, 94, 0.26), transparent 38%),
+    rgba(17, 24, 39, 0.96);
+}
+
+.task-row--needs_permission,
+.task-row--needs_confirmation {
+  background:
+    radial-gradient(circle at 33px 50%, rgba(245, 158, 11, 0.3), transparent 40%),
+    rgba(17, 24, 39, 0.96);
+}
+
+.task-row--completed {
+  background:
+    radial-gradient(circle at 33px 50%, rgba(239, 68, 68, 0.28), transparent 40%),
+    rgba(17, 24, 39, 0.96);
+}
+
+.task-row--interrupted {
+  background:
+    radial-gradient(circle at 26px 45%, rgba(245, 158, 11, 0.28), transparent 34%),
+    radial-gradient(circle at 58px 54%, rgba(239, 68, 68, 0.28), transparent 38%),
+    rgba(17, 24, 39, 0.96);
+}
+
+.status-chip {
+  position: relative;
   flex: 0 0 auto;
-  gap: 5px;
-  width: 37px;
+  width: 54px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(2, 6, 23, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -7px 12px rgba(0, 0, 0, 0.34);
+  box-sizing: border-box;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 12px;
+  letter-spacing: 0;
 }
 
-.traffic-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #3a3f46;
+.status-chip::before {
+  position: absolute;
+  inset: 2px 3px auto 3px;
+  height: 1px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  content: "";
 }
 
-.traffic-dots--executing .traffic-dot--green {
-  background: #22c55e;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.92);
+.status-chip--executing {
+  border-color: rgba(74, 222, 128, 0.42);
+  color: #bbf7d0;
+  background: linear-gradient(180deg, rgba(6, 78, 59, 0.92), rgba(2, 44, 34, 0.92));
+  box-shadow:
+    0 0 16px rgba(34, 197, 94, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -7px 12px rgba(0, 0, 0, 0.34);
 }
 
-.traffic-dots--needs_permission .traffic-dot--yellow,
-.traffic-dots--needs_confirmation .traffic-dot--yellow {
-  background: #facc15;
-  box-shadow: 0 0 10px rgba(250, 204, 21, 0.88);
+.status-chip--needs_permission,
+.status-chip--needs_confirmation {
+  border-color: rgba(251, 191, 36, 0.46);
+  color: #fde68a;
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.92), rgba(69, 26, 3, 0.92));
+  box-shadow:
+    0 0 16px rgba(245, 158, 11, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -7px 12px rgba(0, 0, 0, 0.34);
 }
 
-.traffic-dots--completed .traffic-dot--red {
-  background: #ef4444;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.86);
+.status-chip--completed {
+  border-color: rgba(248, 113, 113, 0.44);
+  color: #fecaca;
+  background: linear-gradient(180deg, rgba(127, 29, 29, 0.92), rgba(69, 10, 10, 0.92));
+  box-shadow:
+    0 0 16px rgba(239, 68, 68, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -7px 12px rgba(0, 0, 0, 0.34);
 }
 
-.traffic-dots--interrupted .traffic-dot--yellow,
-.traffic-dots--interrupted .traffic-dot--red {
-  animation: pulse-alert 0.85s infinite alternate;
-}
-
-.traffic-dots--interrupted .traffic-dot--yellow {
-  background: #facc15;
-  box-shadow: 0 0 10px rgba(250, 204, 21, 0.88);
-}
-
-.traffic-dots--interrupted .traffic-dot--red {
-  background: #ef4444;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.86);
+.status-chip--interrupted {
+  animation: chip-alert 0.85s infinite alternate;
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #fee2e2;
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.94), rgba(127, 29, 29, 0.94));
+  box-shadow:
+    0 0 18px rgba(239, 68, 68, 0.5),
+    0 0 26px rgba(245, 158, 11, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -7px 12px rgba(0, 0, 0, 0.34);
 }
 
 .task-copy {
@@ -291,23 +363,15 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
-  line-height: 18px;
-}
-
-.task-status {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #aab2bd;
-  font-size: 11px;
-  line-height: 14px;
+  line-height: 15px;
 }
 
 .provider-marker {
   flex: 0 0 auto;
-  max-width: 72px;
+  width: 50px;
+  margin-left: auto;
   overflow: hidden;
   padding: 3px 7px;
   border: 1px solid rgba(203, 213, 225, 0.24);
@@ -315,13 +379,14 @@ button {
   color: #cbd5e1;
   font-size: 10px;
   line-height: 12px;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-@keyframes pulse-alert {
+@keyframes chip-alert {
   from {
-    opacity: 0.38;
+    opacity: 0.58;
   }
 
   to {

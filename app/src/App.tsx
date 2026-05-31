@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   getHookStatus,
   getSettings,
@@ -10,6 +11,7 @@ import {
 } from "./api";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TaskOverlay } from "./components/TaskOverlay";
+import { canStartSurfaceDrag, movedPastDragThreshold } from "./drag";
 import "./styles.css";
 import type { AppSettings, HookStatus, TaskDto } from "./types";
 
@@ -21,8 +23,28 @@ const defaultSettings: AppSettings = {
   startAtLogin: false,
 };
 
+async function startWindowDrag() {
+  if (!("__TAURI_INTERNALS__" in window)) {
+    return;
+  }
+
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startDragging();
+  } catch (error) {
+    console.warn("Failed to drag overlay window", error);
+  }
+}
+
+type PendingDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+};
+
 function App() {
   const mountedRef = useRef(false);
+  const pendingDragRef = useRef<PendingDrag | null>(null);
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [hookStatus, setHookStatus] = useState<HookStatus>("not_installed");
@@ -35,6 +57,43 @@ function App() {
 
     return () => {
       mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const pendingDrag = pendingDragRef.current;
+      if (!pendingDrag || event.pointerId !== pendingDrag.pointerId) {
+        return;
+      }
+
+      if (!movedPastDragThreshold(
+        pendingDrag.startX,
+        pendingDrag.startY,
+        event.clientX,
+        event.clientY,
+      )) {
+        return;
+      }
+
+      pendingDragRef.current = null;
+      startWindowDrag();
+    }
+
+    function clearPendingDrag(event: PointerEvent) {
+      if (pendingDragRef.current?.pointerId === event.pointerId) {
+        pendingDragRef.current = null;
+      }
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", clearPendingDrag);
+    window.addEventListener("pointercancel", clearPendingDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", clearPendingDrag);
+      window.removeEventListener("pointercancel", clearPendingDrag);
     };
   }, []);
 
@@ -118,23 +177,48 @@ function App() {
     }
   }
 
+  function handleSurfacePointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if (event.button !== 0 || !canStartSurfaceDrag(event.target)) {
+      return;
+    }
+
+    pendingDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }
+
+  const hasTasks = tasks.length > 0;
+  const shouldShowShell = hasTasks || settingsOpen;
+
   return (
-    <main className={`app-shell${settingsOpen ? " app-shell--settings-open" : ""}`}>
-      <div className="top-bar">
-        <div
-          className="drag-handle"
-          data-tauri-drag-region
-          aria-label="Move window"
-          title="Move window"
-        />
+    <main
+      className={[
+        "app-shell",
+        settingsOpen ? "app-shell--settings-open" : "",
+        shouldShowShell ? "" : "app-shell--hidden",
+      ].filter(Boolean).join(" ")}
+      onPointerDown={handleSurfacePointerDown}
+    >
+      {shouldShowShell ? (
         <button
           className="settings-button"
           type="button"
+          aria-label="Settings"
+          title="Settings"
           onClick={() => setSettingsOpen((isOpen) => !isOpen)}
         >
-          Settings
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M4 7h10" />
+            <path d="M18 7h2" />
+            <path d="M4 17h2" />
+            <path d="M10 17h10" />
+            <circle cx="16" cy="7" r="2" />
+            <circle cx="8" cy="17" r="2" />
+          </svg>
         </button>
-      </div>
+      ) : null}
 
       {settingsOpen ? (
         <SettingsPanel
@@ -147,7 +231,7 @@ function App() {
         />
       ) : null}
 
-      <TaskOverlay tasks={tasks} onTaskViewed={handleTaskViewed} />
+      {hasTasks ? <TaskOverlay tasks={tasks} onTaskViewed={handleTaskViewed} /> : null}
     </main>
   );
 }

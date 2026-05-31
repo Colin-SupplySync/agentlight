@@ -3,6 +3,8 @@ use std::time::{Duration, Instant};
 
 use crate::domain::{reduce_task, NormalizedEvent, TaskRecord, TaskStatus};
 
+const EXECUTING_IDLE_EXPIRATION: Duration = Duration::from_secs(12 * 60 * 60);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NotificationRequest {
     pub task_id: String,
@@ -20,6 +22,7 @@ pub struct TaskStore {
 struct StoredTask {
     record: TaskRecord,
     viewed_at: Option<Instant>,
+    updated_at: Instant,
     sequence: u64,
 }
 
@@ -28,7 +31,25 @@ impl TaskStore {
         Self::default()
     }
 
+    #[cfg(test)]
     pub fn apply_event(&mut self, event: NormalizedEvent) -> Option<NotificationRequest> {
+        self.apply_event_with_title(event, None)
+    }
+
+    pub fn apply_event_with_title(
+        &mut self,
+        event: NormalizedEvent,
+        title_hint: Option<String>,
+    ) -> Option<NotificationRequest> {
+        self.apply_event_at(event, Instant::now(), title_hint)
+    }
+
+    fn apply_event_at(
+        &mut self,
+        event: NormalizedEvent,
+        now: Instant,
+        title_hint: Option<String>,
+    ) -> Option<NotificationRequest> {
         let task_id = session_id(&event).to_string();
         if matches!(event, NormalizedEvent::UserPromptSubmit { .. }) {
             self.notified
@@ -45,7 +66,10 @@ impl TaskStore {
             |task| task.sequence,
         );
         let existing = existing_task.map(|task| task.record);
-        let task = reduce_task(existing, event);
+        let mut task = reduce_task(existing, event);
+        if let Some(title) = clean_title_hint(title_hint) {
+            task.title = title;
+        }
         let notification = self.notification_for(&task);
 
         self.tasks.insert(
@@ -53,6 +77,7 @@ impl TaskStore {
             StoredTask {
                 record: task,
                 viewed_at: None,
+                updated_at: now,
                 sequence,
             },
         );
@@ -72,17 +97,18 @@ impl TaskStore {
             .tasks
             .iter()
             .filter_map(|(task_id, task)| {
-                let expires_when_viewed = matches!(
-                    task.record.status,
-                    TaskStatus::Completed | TaskStatus::Interrupted
-                );
-
-                if expires_when_viewed
-                    && task.record.viewed
+                let viewed_expired = task.record.viewed
                     && task
                         .viewed_at
-                        .is_some_and(|viewed_at| now.duration_since(viewed_at) >= delay)
-                {
+                        .is_some_and(|viewed_at| now.duration_since(viewed_at) >= delay);
+                let terminal_expired = matches!(
+                    task.record.status,
+                    TaskStatus::Completed | TaskStatus::Interrupted
+                ) && now.duration_since(task.updated_at) >= delay;
+                let executing_idle_expired = task.record.status == TaskStatus::Executing
+                    && now.duration_since(task.updated_at) >= EXECUTING_IDLE_EXPIRATION;
+
+                if viewed_expired || terminal_expired || executing_idle_expired {
                     Some(task_id.clone())
                 } else {
                     None
@@ -95,6 +121,10 @@ impl TaskStore {
             self.notified
                 .retain(|(notified_task_id, _)| notified_task_id != &task_id);
         }
+    }
+
+    pub fn has_task(&self, task_id: &str) -> bool {
+        self.tasks.contains_key(task_id)
     }
 
     pub fn visible_tasks(&self) -> Vec<TaskRecord> {
@@ -127,6 +157,12 @@ impl TaskStore {
             title: task.title.clone(),
         })
     }
+}
+
+fn clean_title_hint(title_hint: Option<String>) -> Option<String> {
+    title_hint
+        .map(|title| title.trim().to_string())
+        .filter(|title| !title.is_empty())
 }
 
 fn session_id(event: &NormalizedEvent) -> &str {
@@ -216,6 +252,25 @@ mod tests {
     }
 
     #[test]
+    fn title_hint_overrides_prompt_title_and_updates_on_later_status() {
+        let mut store = TaskStore::new();
+        store.apply_event_with_title(prompt("s1"), Some("调研红绿黄灯项目".into()));
+        assert_eq!(store.visible_tasks()[0].title, "调研红绿黄灯项目");
+
+        let notification = store.apply_event_with_title(completed("s1"), Some("红绿灯 MVP".into()));
+
+        assert_eq!(store.visible_tasks()[0].title, "红绿灯 MVP");
+        assert_eq!(
+            notification,
+            Some(NotificationRequest {
+                task_id: "s1".into(),
+                status: TaskStatus::Completed,
+                title: "红绿灯 MVP".into(),
+            })
+        );
+    }
+
+    #[test]
     fn completed_disappears_after_viewed_delay() {
         let mut store = TaskStore::new();
         store.apply_event(prompt("s1"));
@@ -229,19 +284,102 @@ mod tests {
     }
 
     #[test]
-    fn yellow_states_do_not_disappear_after_viewed() {
+    fn completed_disappears_after_terminal_delay_without_being_viewed() {
+        let mut store = TaskStore::new();
+        store.apply_event(prompt("s1"));
+        store.apply_event(completed("s1"));
+
+        store.remove_expired_viewed(Instant::now(), Duration::from_secs(0));
+
+        assert!(store.visible_tasks().is_empty());
+    }
+
+    #[test]
+    fn yellow_states_disappear_after_viewed_delay() {
         let mut store = TaskStore::new();
         store.apply_event(prompt("s1"));
         store.apply_event(permission("s1"));
 
         let viewed_at = Instant::now();
         store.mark_viewed("s1", viewed_at);
-        store.remove_expired_viewed(viewed_at, Duration::from_secs(0));
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(14), Duration::from_secs(15));
 
         let tasks = store.visible_tasks();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].status, TaskStatus::NeedsPermission);
         assert!(tasks[0].viewed);
+
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(15), Duration::from_secs(15));
+
+        assert!(store.visible_tasks().is_empty());
+    }
+
+    #[test]
+    fn yellow_states_stay_visible_until_viewed() {
+        let mut store = TaskStore::new();
+        store.apply_event(prompt("s1"));
+        store.apply_event(permission("s1"));
+
+        store.remove_expired_viewed(
+            Instant::now() + Duration::from_secs(60 * 60),
+            Duration::from_secs(15),
+        );
+
+        let tasks = store.visible_tasks();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].status, TaskStatus::NeedsPermission);
+        assert!(!tasks[0].viewed);
+    }
+
+    #[test]
+    fn executing_disappears_after_viewed_delay() {
+        let mut store = TaskStore::new();
+        store.apply_event(prompt("s1"));
+
+        let viewed_at = Instant::now();
+        store.mark_viewed("s1", viewed_at);
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(14), Duration::from_secs(15));
+        assert_eq!(store.visible_tasks().len(), 1);
+
+        store.remove_expired_viewed(viewed_at + Duration::from_secs(15), Duration::from_secs(15));
+
+        assert!(store.visible_tasks().is_empty());
+    }
+
+    #[test]
+    fn stale_executing_disappears_after_idle_limit_without_being_viewed() {
+        let mut store = TaskStore::new();
+        let started_at = Instant::now();
+        store.apply_event_at(prompt("s1"), started_at, None);
+
+        store.remove_expired_viewed(
+            started_at + EXECUTING_IDLE_EXPIRATION - Duration::from_secs(1),
+            Duration::from_secs(15),
+        );
+        assert_eq!(store.visible_tasks().len(), 1);
+
+        store.remove_expired_viewed(
+            started_at + EXECUTING_IDLE_EXPIRATION,
+            Duration::from_secs(15),
+        );
+
+        assert!(store.visible_tasks().is_empty());
+    }
+
+    #[test]
+    fn long_running_executing_task_stays_visible_after_ten_hours() {
+        let mut store = TaskStore::new();
+        let started_at = Instant::now();
+        store.apply_event_at(prompt("s1"), started_at, None);
+
+        store.remove_expired_viewed(
+            started_at + Duration::from_secs(10 * 60 * 60),
+            Duration::from_secs(15),
+        );
+
+        let tasks = store.visible_tasks();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].status, TaskStatus::Executing);
     }
 
     #[test]
