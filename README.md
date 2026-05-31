@@ -1,6 +1,6 @@
 # AgentLight
 
-AgentLight 是一个由 Codex 开发的小型桌面状态灯，用来显示 AI 编程任务的状态。
+AgentLight 解决的是 AI 编程任务“跑着跑着就忘了看”的问题。它把 Codex 的任务状态放到一个很小的桌面状态灯里，让你不用一直盯着 Codex 窗口。需要处理、需要确认或任务完成时，它可以通过 Bark 通知到 iPhone。
 
 目前主要支持：
 
@@ -27,7 +27,7 @@ AgentLight 是一个由 Codex 开发的小型桌面状态灯，用来显示 AI �
 
 ---
 
-AgentLight is a tiny desktop status light for AI coding tasks, built by Codex.
+AgentLight solves the problem of losing track of long-running AI coding tasks. It keeps Codex task status in a tiny desktop status light, so you do not need to watch the Codex window all the time. When a task needs attention or finishes, it can notify your iPhone through Bark.
 
 Currently supported:
 
@@ -51,4 +51,3 @@ How to use:
 5. Use Codex normally; AgentLight will show status and send notifications automatically
 
 Codex can complete the setup, Bark connection, hook installation, and verification by itself.
-
