@@ -23,6 +23,8 @@ AgentLight 解决的是 AI 编程任务“跑着跑着就忘了看”的问题�
 4. 安装 Codex hooks
 5. 正常使用 Codex，AgentLight 会自动显示状态并发送通知
 
+建议使用打包后的 macOS App 运行 AgentLight；`npm run tauri dev` 只适合开发调试，终端会话结束后进程可能会一起退出。AgentLight 会根据本地设置注册登录启动，避免每次手动启动。
+
 安装、配置、Bark 接入、hooks 安装和验证，都可以让 Codex 自行完成。
 
 ---
@@ -49,5 +51,7 @@ How to use:
 3. Add your Bark URL to AgentLight
 4. Install Codex hooks
 5. Use Codex normally; AgentLight will show status and send notifications automatically
+
+Run AgentLight from the packaged macOS app for daily use. `npm run tauri dev` is only for development and can stop when the terminal session ends. AgentLight syncs the local start-at-login setting so it can start automatically after login.
 
 Codex can complete the setup, Bark connection, hook installation, and verification by itself.

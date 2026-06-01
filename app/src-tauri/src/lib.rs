@@ -28,6 +28,47 @@ const HOOK_SERVER_ADDR: &str = "127.0.0.1:17321";
 const VIEWED_EXPIRATION: Duration = Duration::from_secs(15);
 const OVERLAY_MARGIN: i32 = 16;
 
+#[derive(Debug, Eq, PartialEq)]
+enum AutostartSyncAction {
+    Enable,
+    Disable,
+}
+
+fn autostart_sync_action(is_enabled: bool, should_enable: bool) -> Option<AutostartSyncAction> {
+    match (is_enabled, should_enable) {
+        (false, true) => Some(AutostartSyncAction::Enable),
+        (true, false) => Some(AutostartSyncAction::Disable),
+        _ => None,
+    }
+}
+
+fn sync_autostart_setting(app: &tauri::AppHandle, start_at_login: bool) -> Result<(), String> {
+    #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+
+        let manager = app.autolaunch();
+        let is_enabled = manager.is_enabled().map_err(|err| err.to_string())?;
+
+        match autostart_sync_action(is_enabled, start_at_login) {
+            Some(AutostartSyncAction::Enable) => {
+                manager.enable().map_err(|err| err.to_string())?;
+            }
+            Some(AutostartSyncAction::Disable) => {
+                manager.disable().map_err(|err| err.to_string())?;
+            }
+            None => {}
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    {
+        let _ = (app, start_at_login);
+    }
+
+    Ok(())
+}
+
 fn settings_path() -> Result<PathBuf, String> {
     dirs::home_dir()
         .map(|home| home.join(".codex-status-light").join("settings.json"))
@@ -190,9 +231,14 @@ fn get_settings(state: tauri::State<SharedBackendState>) -> AppSettings {
 
 #[tauri::command]
 fn save_app_settings(
+    app: tauri::AppHandle,
     settings: AppSettings,
     state: tauri::State<SharedBackendState>,
 ) -> Result<AppSettings, String> {
+    if let Err(err) = sync_autostart_setting(&app, settings.start_at_login) {
+        eprintln!("failed to sync autostart setting: {err}");
+    }
+
     let path = settings_path()?;
     save_settings_to_state(settings, &state, &path)
 }
@@ -246,8 +292,24 @@ pub fn run() {
     );
     let hook_state = state.clone();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+
+    #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+    {
+        builder = builder
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }));
+    }
+
+    builder
         .manage(state)
         .setup(move |app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -255,10 +317,20 @@ pub fn run() {
                 position_overlay_window(&window, width);
             }
 
+            let start_at_login = hook_state
+                .settings
+                .lock()
+                .expect("settings lock poisoned")
+                .start_at_login;
+            if let Err(err) = sync_autostart_setting(app.handle(), start_at_login) {
+                eprintln!("failed to sync autostart setting: {err}");
+            }
+
+            let server_state = hook_state.clone();
             tauri::async_runtime::spawn(async move {
                 match tokio::net::TcpListener::bind(HOOK_SERVER_ADDR).await {
                     Ok(listener) => {
-                        if let Err(err) = axum::serve(listener, hook_router(hook_state)).await {
+                        if let Err(err) = axum::serve(listener, hook_router(server_state)).await {
                             eprintln!("hook server exited with error: {err}");
                         }
                     }
@@ -295,6 +367,14 @@ mod tests {
             session_id: session_id.into(),
             prompt: "修复登录页并跑测试".into(),
         }
+    }
+
+    #[test]
+    fn autostart_sync_action_only_changes_when_state_differs() {
+        assert_eq!(autostart_sync_action(false, false), None);
+        assert_eq!(autostart_sync_action(false, true), Some(AutostartSyncAction::Enable));
+        assert_eq!(autostart_sync_action(true, false), Some(AutostartSyncAction::Disable));
+        assert_eq!(autostart_sync_action(true, true), None);
     }
 
     #[test]
