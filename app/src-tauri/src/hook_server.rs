@@ -18,6 +18,7 @@ use crate::domain::NormalizedEvent;
 use crate::notifier::{BarkNotifier, OutboundNotification};
 use crate::settings::AppSettings;
 use crate::task_store::{NotificationRequest, TaskStore};
+use crate::title::derive_title;
 
 #[derive(Clone)]
 pub struct SharedBackendState {
@@ -340,6 +341,10 @@ fn is_low_signal_prompt(prompt: &str) -> bool {
         return true;
     }
 
+    if derive_title(trimmed) == "Codex task" {
+        return true;
+    }
+
     let normalized = trimmed.to_ascii_lowercase();
     if normalized.starts_with("you are an expert") || normalized.starts_with("you are codex") {
         return true;
@@ -604,6 +609,7 @@ mod tests {
 
         for (idx, prompt) in [
             "",
+            "请帮我",
             "# Overview",
             "You are an expert implementation agent.",
         ]
